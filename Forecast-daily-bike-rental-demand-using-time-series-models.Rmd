@@ -1,0 +1,256 @@
+---
+title: "Forecast daily bike rental demand using time series models"
+date: "`r Sys.Date()`"
+output: html_document
+author: "Misikir G Tesfaye"
+---
+
+# About Data Analysis Report
+
+This RMarkdown file contains the report of the data analysis done for the project on forecasting daily bike rental demand using time series models in R. It contains analysis such as data exploration, summary statistics and building the time series models. The final report was completed on `r date()`. 
+
+**Data Description:**
+
+This dataset contains the daily count of rental bike transactions between years 2011 and 2012 in Capital bikeshare system with the corresponding weather and seasonal information.
+
+**Data Source:** https://archive.ics.uci.edu/ml/datasets/bike+sharing+dataset
+
+**Relevant Paper:** 
+
+Fanaee-T, Hadi, and Gama, Joao. Event labeling combining ensemble detectors and background knowledge, Progress in Artificial Intelligence (2013): pp. 1-15, Springer Berlin Heidelberg
+
+
+
+# Task One: Load and explore the data
+
+## Load data and install packages
+
+```{r}
+## Import required packages
+library(tidyverse)
+library(readxl)  
+library(corrplot)
+library(ggplot2)
+library(plotly)
+library(stlARIMA)
+library(forecast)
+
+## Download and unzip the file
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/00275/Bike-Sharing-Dataset.zip", destfile = "Bike-Sharing-Dataset.zip")
+unzip("Bike-Sharing-Dataset.zip")  # Unzip the downloaded file
+
+# List the files in the unzipped folder
+list.files()
+
+# Load day.csv and hour.csv files
+bike_data_day <- read.csv("day.csv")
+bike_data_hour <- read.csv("hour.csv")
+
+# Preview the first few rows of the day.csv dataset
+head(bike_data_day)
+
+# Preview the first few rows of the hour.csv dataset
+head(bike_data_hour)
+
+
+```
+
+
+## Describe and explore the data
+
+```{r}
+# Structure of day.csv dataset
+str(bike_data_day)
+
+# Summary statistics of day.csv dataset
+summary(bike_data_day)
+
+# Structure of hour.csv dataset
+str(bike_data_hour)
+
+# Summary statistics of hour.csv dataset
+summary(bike_data_hour)
+
+# Temporal trends for day.csv
+ggplot(bike_data_day, aes(x = dteday, y = cnt)) +
+  geom_line() +
+  labs(title = "Bike Rentals Over Time (Day)")
+
+# Seasonal analysis for day.csv
+ggplot(bike_data_day, aes(x = factor(mnth), y = cnt, fill = factor(season))) +
+  geom_boxplot() +
+  labs(title = "Bike Rentals Across Months by Season")
+
+# Correlation analysis for day.csv
+correlation_matrix <- cor(select(bike_data_day, -dteday, -yr))
+corrplot(correlation_matrix, method = "color")
+
+# Weather distribution for day.csv
+ggplot(bike_data_day, aes(x = factor(weathersit), fill = factor(weathersit))) +
+  geom_bar() +
+  labs(title = "Weather Distribution")
+
+# Season distribution for day.csv
+ggplot(bike_data_day, aes(x = factor(season), fill = factor(season))) +
+  geom_bar() +
+  labs(title = "Season Distribution")
+
+
+
+
+```
+
+
+
+# Task Two: Create interactive time series plots
+
+```{r}
+## Read about the timetk package
+
+# Convert 'dteday' to a Date format
+bike_data_day$dteday <- as.Date(bike_data_day$dteday)
+
+# Create an interactive time series plot for daily bike rentals
+plot <- plot_ly(data = bike_data_day, x = ~dteday, y = ~cnt, type = 'scatter', mode = 'lines') %>%
+  layout(title = "Daily Bike Rentals Over Time",
+         xaxis = list(title = "Date"),
+         yaxis = list(title = "Count"))
+
+# Show the interactive plot
+plot
+
+
+```
+
+
+
+
+# Task Three: Smooth time series data
+
+```{r}
+
+# Convert 'dteday' to a Date format
+bike_data_day$dteday <- as.Date(bike_data_day$dteday)
+
+# Smooth the daily bike rental counts using loess
+smoothed_data <- loess(cnt ~ as.numeric(dteday), data = bike_data_day, span = 0.5)
+
+# Predict values from the smoothed model
+smoothed_values <- predict(smoothed_data)
+
+# Create a new data frame with smoothed values
+smoothed_df <- data.frame(dteday = bike_data_day$dteday, cnt = smoothed_values)
+
+# Plot the original and smoothed time series data
+original_plot <- plot_ly(data = bike_data_day, x = ~dteday, y = ~cnt, type = 'scatter', mode = 'lines', name = "Original Data") %>%
+  layout(title = "Original vs. Smoothed Daily Bike Rentals",
+         xaxis = list(title = "Date"),
+         yaxis = list(title = "Count"))
+
+smoothed_plot <- add_trace(original_plot, data = smoothed_df, x = ~dteday, y = ~cnt, type = 'scatter', mode = 'lines', name = "Smoothed Data")
+
+# Show the combined plot
+smoothed_plot
+
+```
+
+
+
+# Task Four: Decompose and assess the stationarity of time series data
+
+```{r}
+
+# Convert 'dteday' to Date format if it's not already in Date format
+bike_data_day$dteday <- as.Date(bike_data_day$dteday)
+# Create a time series object
+ts_bike_data_day <- ts(bike_data_day$cnt, frequency = 365)
+# Decompose the time series data
+decomposed_ts <- decompose(ts_bike_data_day, type = "multiplicative")
+
+# Plot the decomposed components
+plot(decomposed_ts)
+
+# Plot the original time series data
+plot(ts_bike_data_day, main = "Original Time Series Data")
+
+# Plot the decomposed trend component
+plot(decomposed_ts$trend, main = "Trend Component")
+
+# Plot the decomposed seasonal component
+plot(decomposed_ts$seasonal, main = "Seasonal Component")
+
+# Plot the decomposed residual component
+plot(decomposed_ts$random, main = "Residual Component")
+
+
+
+```
+
+
+
+# Task Five: Fit and forecast time series data using ARIMA models
+
+```{r}
+# Convert 'dteday' to a Date format
+bike_data_day$dteday <- as.Date(bike_data_day$dteday)
+
+# Specify ARIMA model parameters (p, d, q)
+arima_model <- auto.arima(bike_data_day$cnt, seasonal = FALSE)
+
+# Summary of the ARIMA model
+summary(arima_model)
+
+
+# Forecast future values using the ARIMA model
+forecast_values <- forecast(arima_model, h = 30)  # Change 'h' to the desired number of forecasted periods
+
+# Plotting forecasted values
+plot(forecast_values, main = "ARIMA Forecast")
+
+
+
+```
+
+
+
+# Task Six: Findings and Conclusions
+
+**My Conclusion:**
+
+**The ARIMA(1,1,1) model has been identified and fitted to the bike_data_day$cnt series.**
+**The coefficients for the autoregressive (AR) and moving average (MA) terms indicate the relationship between the current** **observation and its lagged values and the moving average of past forecast errors, respectively.**
+**Lower AIC and BIC values generally indicate a better-fitting model. In this case, the AIC and BIC values are around 12049,** **suggesting a relatively good fit.**
+**The error measures (RMSE, MAE, MAPE) indicate the model's performance in predicting the training dataset. A lower RMSE and MAE** **and relatively low MAPE indicate that the model predictions are close to the actual values.**
+**However, the performance of the model should be validated using out-of-sample data or by comparing forecasted values against** **actual observations to ensure its accuracy and reliability in predicting future values beyond the training dataset. Adjustments** **or improvements to the model might be necessary based on further analysis and validation.**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
